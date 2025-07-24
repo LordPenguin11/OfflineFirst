@@ -47,4 +47,14 @@ public protocol OperationExecutor {
     /// - Parameter operation: The `WriteOperation` to be executed.
     /// - Throws: An error if the handler is not found, decoding fails, or the underlying API call fails.
     func execute(operation: WriteOperation) async throws
+    
+    /// Executes a given multipart write operation.
+    ///
+    /// The implementation of this method should handle multipart/form-data uploads,
+    /// including file attachments. This is optional - if not implemented, multipart
+    /// operations will fall back to the regular execute method.
+    ///
+    /// - Parameter operation: The `MultipartWriteOperation` to be executed.
+    /// - Throws: An error if the handler is not found, decoding fails, or the underlying API call fails.
+    func execute(multipartOperation: MultipartWriteOperation) async throws
 }

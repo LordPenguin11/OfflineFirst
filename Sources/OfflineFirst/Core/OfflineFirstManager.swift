@@ -1,6 +1,7 @@
 import Foundation
 import Combine
 import AspynNetwork
+import AspynNetwork
 
 //
 //  OfflineFirstManager.swift
@@ -51,6 +52,10 @@ public class OfflineFirstManager {
     private var coreDataManager: CoreDataManager?
     private var dataSynchronizer: DataSynchronizer?
     
+    /// A batch download manager for downloading multiple files efficiently.
+    /// Only available after the framework has been configured.
+    public private(set) var batchDownloadManager: BatchDownloadManager?
+    
     /// A publisher that emits details of operations that have been aborted.
     ///
     /// Your UI can subscribe to this publisher to be notified when an operation has permanently failed
@@ -77,7 +82,7 @@ public class OfflineFirstManager {
         coreDataProvider: CoreDataProvider,
         network: NetworkProtocol,
         retryPolicy: RetryPolicy = RetryPolicy()
-    ) {
+    ) throws {
         guard !isConfigured else {
             print("OfflineFirstManager is already configured.")
             return
@@ -88,7 +93,7 @@ public class OfflineFirstManager {
         self.dataSynchronizer = DataSynchronizer(coreDataManager: self.coreDataManager!, network: network)
         
         // Setup Write Queue
-        let dbManager = DatabaseManager()
+        let dbManager = try DatabaseManager()
         self.connectivityMonitor = ConnectivityMonitor()
         self.writeQueue = WriteQueue(
             dbManager: dbManager,
@@ -97,6 +102,9 @@ public class OfflineFirstManager {
             retryPolicy: retryPolicy,
             abortedOperationPublisher: abortedOperationPublisher
         )
+        
+        // Setup Batch Download Manager
+        self.batchDownloadManager = BatchDownloadManager(network: network)
         
         self.isConfigured = true
     }
@@ -125,20 +133,72 @@ public class OfflineFirstManager {
         try writeQueue.add(operation: operation)
     }
     
+    /// Queues a multipart write operation (with file attachments) to be executed when the network is available.
+    ///
+    /// Use this method to register a multipart/form-data operation that includes file uploads. The operation is saved to a persistent queue
+    /// and will be automatically attempted when the device comes online. If the execution fails, it will be retried with an exponential backoff strategy.
+    ///
+    /// - Parameters:
+    ///   - functionIdentifier: A unique string that identifies the function to be executed. This should match a key in your `OperationExecutor`'s handler dictionary.
+    ///   - parameters: An `Encodable` object representing the parameters for the function. These will be encoded to `Data` for storage.
+    ///   - attachments: An array of `FileAttachment` objects representing the files to be uploaded as part of this operation.
+    /// - Throws: An error if the framework has not been configured, or if the operation fails to be encoded or saved to the database.
+    public func queueMultipartWrite(functionIdentifier: String, parameters: Encodable, attachments: [FileAttachment]) throws {
+        guard let writeQueue = writeQueue, isConfigured else {
+            fatalError("OfflineFirstManager must be configured before calling queueMultipartWrite.")
+        }
+        
+        let paramsData = try JSONEncoder().encode(parameters)
+        
+        let operation = MultipartWriteOperation(
+            functionIdentifier: functionIdentifier,
+            parameters: paramsData,
+            attachments: attachments
+        )
+        
+        try writeQueue.add(multipartOperation: operation)
+    }
+    
+    // Note: Sync functionality will be refined in a future iteration
+    // to properly handle array responses and conflict resolution
+    /*
     /// Synchronizes data for a given network endpoint, handling conflicts with the provided resolver.
     ///
     /// This function fetches data from a remote source, compares it with the local data in your Core Data store,
     /// and uses a `ConflictResolver` to merge any differences. This is the primary mechanism for keeping the on-device cache up-to-date.
     ///
     /// - Parameters:
-    ///   - endpoint: The `Endpoint` to fetch data from. The response type of the endpoint must be `Decodable`.
+    ///   - endpoint: The `RequestEndpoint` to fetch data from. The response type must be `Decodable`.
+    ///   - responseType: The type of the expected response data.
     ///   - resolver: An object conforming to `ConflictResolver` that defines the logic for handling data conflicts between the remote and local versions of an object.
     /// - Throws: An error if the framework is not configured, or if the network request or data processing fails.
-    public func sync<T, R>(endpoint: T, resolver: R) async throws where T: Endpoint, T.Response: Decodable, R: ConflictResolver, T.Response == R.ManagedObjectType {
+    public func sync<T, R>(endpoint: RequestEndpoint, responseType: T.Type, resolver: R) async throws where T: Decodable, R: ConflictResolver, T == R.ManagedObjectType {
         guard let dataSynchronizer = dataSynchronizer, isConfigured else {
             fatalError("OfflineFirstManager must be configured before calling sync.")
         }
         
-        try await dataSynchronizer.sync(endpoint: endpoint, resolver: resolver)
+        try await dataSynchronizer.sync(endpoint: endpoint, responseType: responseType, resolver: resolver)
+    }
+    */
+    
+    /// Downloads multiple files concurrently using the batch download manager.
+    ///
+    /// This is a convenience method that provides access to the framework's batch download capabilities.
+    /// The download operation will only proceed if the device is online.
+    ///
+    /// - Parameters:
+    ///   - tasks: The download tasks to execute.
+    ///   - configuration: Configuration options for the batch download. Uses default configuration if not provided.
+    /// - Returns: A publisher that emits the final download results and completes when all downloads are finished.
+    /// - Throws: A fatal error if the framework has not been configured.
+    public func downloadBatch(
+        tasks: [DownloadTask],
+        configuration: BatchDownloadConfiguration = .default
+    ) -> AnyPublisher<[DownloadResult], Error> {
+        guard let batchDownloadManager = batchDownloadManager, isConfigured else {
+            fatalError("OfflineFirstManager must be configured before calling downloadBatch.")
+        }
+        
+        return batchDownloadManager.downloadBatch(tasks: tasks, configuration: configuration)
     }
 }

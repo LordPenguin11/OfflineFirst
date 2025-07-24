@@ -1,6 +1,7 @@
 import Foundation
 import CoreData
 import AspynNetwork
+import AspynNetwork
 
 /// Handles the synchronization of data from a remote source to the local Core Data store.
 internal class DataSynchronizer {
@@ -17,27 +18,25 @@ internal class DataSynchronizer {
         self.network = network
     }
     
-    /// Synchronizes data for a given endpoint.
+    // Note: This will be refined in a future iteration to properly handle
+    // array responses and conflict resolution
+    /*
+    /// Synchronizes data from a remote endpoint with the local Core Data store.
     /// - Parameters:
-    ///   - endpoint: The network endpoint to fetch data from.
+    ///   - endpoint: The endpoint to fetch data from.
+    ///   - responseType: The type of the expected response data.
     ///   - resolver: The conflict resolver to use for merging data.
     /// - Throws: An error if the network request or data processing fails.
-    internal func sync<T, R>(endpoint: T, resolver: R) async throws where T: Endpoint, T.Response: Decodable, R: ConflictResolver, T.Response == R.ManagedObjectType {
+    internal func sync<T, R>(endpoint: RequestEndpoint, responseType: T.Type, resolver: R) async throws where T: Decodable, R: ConflictResolver, T == R.ManagedObjectType {
         
-        let remoteObjects = try await network.request(endpoint)
+        let remoteObjects: T = try await network.request(request: endpoint)
         
         let context = coreDataManager.provider.newBackgroundContext()
         
         try await context.perform {
-            for remoteObject in remoteObjects {
-                let local = self.coreDataManager.findExisting(for: remoteObject, in: context)
-                
-                let finalObject = resolver.resolve(remote: remoteObject, local: local)
-                
-                // The mapping from remote to managed is implicit via the resolver's return type
-                // and the save method will handle the upsert.
-                try self.coreDataManager.save(object: finalObject)
-            }
+            resolver.resolve(remoteData: remoteObjects, in: context)
+            try context.save()
         }
     }
+    */
 }
