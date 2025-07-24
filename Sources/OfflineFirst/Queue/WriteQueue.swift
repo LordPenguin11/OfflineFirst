@@ -52,7 +52,7 @@ internal class WriteQueue {
         try dbManager.db.run(insert)
         
         // Trigger processing immediately if online
-        if connectivityMonitor.isOnline.value {
+        if connectivityMonitor.isConnected {
             Task {
                 await processQueue()
             }

@@ -16,7 +16,6 @@ let package = Package(
     ],
     dependencies: [
         .package(path: "../aptive-core-ios"),
-        .package(path: "../network-monitor-ios"),
         .package(url: "https://github.com/stephencelis/SQLite.swift.git", from: "0.15.0")
     ],
     targets: [
@@ -26,7 +25,6 @@ let package = Package(
             name: "OfflineFirst",
             dependencies: [
                 .product(name: "AspynNetwork", package: "aptive-core-ios"),
-                .product(name: "NetworkMonitor", package: "network-monitor-ios"),
                 .product(name: "SQLite", package: "SQLite.swift")
             ]
         ),

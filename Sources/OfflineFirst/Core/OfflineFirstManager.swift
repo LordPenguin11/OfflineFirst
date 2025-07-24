@@ -70,12 +70,12 @@ public class OfflineFirstManager {
     /// - Parameters:
     ///   - executor: An object conforming to `OperationExecutor`. This is your application-specific logic that knows how to execute the queued write operations (e.g., by calling your `APIClient`).
     ///   - coreDataProvider: An object conforming to `CoreDataProvider`. This provides the framework with access to your app's Core Data stack (the view context and background contexts).
-    ///   - network: The `AspynNetwork` client instance used for fetching data during synchronization.
+    ///   - network: An object conforming to `NetworkProtocol` that handles your app's network requests.
     ///   - retryPolicy: A `RetryPolicy` struct that defines the rules for retrying failed operations.
     public func configure(
         executor: OperationExecutor,
         coreDataProvider: CoreDataProvider,
-        network: AspynNetwork,
+        network: NetworkProtocol,
         retryPolicy: RetryPolicy = RetryPolicy()
     ) {
         guard !isConfigured else {

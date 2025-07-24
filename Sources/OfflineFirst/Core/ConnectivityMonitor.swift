@@ -1,41 +1,42 @@
 import Foundation
-import Combine
 import Network
-import NetworkMonitor
+import Combine
 
-/// A class that monitors network connectivity and provides a publisher for the network status.
-///
-/// This class is a wrapper around the `NetworkMonitor` from the `network-monitor-ios` package.
-public class ConnectivityMonitor {
+/// Monitors network connectivity and publishes status updates.
+internal class ConnectivityMonitor {
+    private let monitor = NWPathMonitor()
+    private let queue = DispatchQueue(label: "com.aspyn.offlinefirst.connectivitymonitor")
     
-    /// The underlying network monitor instance.
-    private let monitor: NWPathMonitor
+    private let statusSubject = CurrentValueSubject<Bool, Never>(false)
     
-    /// A publisher that emits the current network status.
+    /// A publisher that emits the network status.
     /// `true` if the network is available, `false` otherwise.
-    public let isOnline: CurrentValueSubject<Bool, Never>
-    
-    /// A cancellable for the network status publisher.
-    private var cancellable: AnyCancellable?
-    
-    /// Initializes a new network monitor.
-    public init() {
-        self.monitor = NWPathMonitor()
-        self.isOnline = CurrentValueSubject<Bool, Never>(monitor.currentPath.status == .satisfied)
-        
-        self.cancellable = monitor.publisher()
-            .map { $0.status == .satisfied }
-            .removeDuplicates()
-            .subscribe(on: DispatchQueue.global(qos: .background))
-            .receive(on: DispatchQueue.main)
-            .sink(receiveValue: { [weak self] isOnline in
-                self?.isOnline.send(isOnline)
-            })
-        
-        monitor.start(queue: DispatchQueue.global(qos: .background))
+    internal var isOnline: AnyPublisher<Bool, Never> {
+        statusSubject.eraseToAnyPublisher()
     }
     
-    deinit {
+    /// The last known network status.
+    internal var isConnected: Bool {
+        return monitor.currentPath.status == .satisfied
+    }
+    
+    internal init() {
+        // Set initial value
+        statusSubject.send(monitor.currentPath.status == .satisfied)
+        
+        monitor.pathUpdateHandler = { [weak self] path in
+            let isConnected = path.status == .satisfied
+            self?.statusSubject.send(isConnected)
+        }
+    }
+    
+    /// Starts monitoring for network changes.
+    internal func start() {
+        monitor.start(queue: queue)
+    }
+    
+    /// Stops monitoring for network changes.
+    internal func stop() {
         monitor.cancel()
     }
 }

@@ -6,13 +6,13 @@ import AspynNetwork
 internal class DataSynchronizer {
     
     private let coreDataManager: CoreDataManager
-    private let network: AspynNetwork
+    private let network: NetworkProtocol
     
     /// Initializes the synchronizer.
     /// - Parameters:
     ///   - coreDataManager: The manager for Core Data operations.
     ///   - network: The network client for fetching remote data.
-    internal init(coreDataManager: CoreDataManager, network: AspynNetwork) {
+    internal init(coreDataManager: CoreDataManager, network: NetworkProtocol) {
         self.coreDataManager = coreDataManager
         self.network = network
     }
