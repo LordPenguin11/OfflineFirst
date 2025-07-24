@@ -51,6 +51,13 @@ public class OfflineFirstManager {
     private var coreDataManager: CoreDataManager?
     private var dataSynchronizer: DataSynchronizer?
     
+    /// A publisher that emits details of operations that have been aborted.
+    ///
+    /// Your UI can subscribe to this publisher to be notified when an operation has permanently failed
+    /// (either by reaching the maximum number of retries or by encountering an unrecoverable error).
+    /// This allows you to inform the user, update the UI state, or perform any necessary cleanup.
+    public let abortedOperationPublisher = PassthroughSubject<(operation: WriteOperation, error: Error), Never>()
+    
     private var isConfigured = false
     
     private init() {}
@@ -64,7 +71,13 @@ public class OfflineFirstManager {
     ///   - executor: An object conforming to `OperationExecutor`. This is your application-specific logic that knows how to execute the queued write operations (e.g., by calling your `APIClient`).
     ///   - coreDataProvider: An object conforming to `CoreDataProvider`. This provides the framework with access to your app's Core Data stack (the view context and background contexts).
     ///   - network: The `AspynNetwork` client instance used for fetching data during synchronization.
-    public func configure(executor: OperationExecutor, coreDataProvider: CoreDataProvider, network: AspynNetwork) {
+    ///   - retryPolicy: A `RetryPolicy` struct that defines the rules for retrying failed operations.
+    public func configure(
+        executor: OperationExecutor,
+        coreDataProvider: CoreDataProvider,
+        network: AspynNetwork,
+        retryPolicy: RetryPolicy = RetryPolicy()
+    ) {
         guard !isConfigured else {
             print("OfflineFirstManager is already configured.")
             return
@@ -80,7 +93,9 @@ public class OfflineFirstManager {
         self.writeQueue = WriteQueue(
             dbManager: dbManager,
             executor: executor,
-            connectivityMonitor: self.connectivityMonitor!
+            connectivityMonitor: self.connectivityMonitor!,
+            retryPolicy: retryPolicy,
+            abortedOperationPublisher: abortedOperationPublisher
         )
         
         self.isConfigured = true

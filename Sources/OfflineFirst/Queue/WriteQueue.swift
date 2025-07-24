@@ -8,6 +8,8 @@ internal class WriteQueue {
     private let dbManager: DatabaseManager
     private let executor: OperationExecutor
     private let connectivityMonitor: ConnectivityMonitor
+    private let retryPolicy: RetryPolicy
+    private let abortedOperationPublisher: PassthroughSubject<(operation: WriteOperation, error: Error), Never>
     private var cancellables = Set<AnyCancellable>()
     
     /// A flag to prevent processing the queue multiple times simultaneously.
@@ -18,10 +20,20 @@ internal class WriteQueue {
     ///   - dbManager: The database manager for persistence.
     ///   - executor: The executor responsible for running the operations.
     ///   - connectivityMonitor: The monitor for observing network status.
-    internal init(dbManager: DatabaseManager, executor: OperationExecutor, connectivityMonitor: ConnectivityMonitor) {
+    ///   - retryPolicy: The policy that defines retry behavior.
+    ///   - abortedOperationPublisher: A publisher to notify when an operation is aborted.
+    internal init(
+        dbManager: DatabaseManager,
+        executor: OperationExecutor,
+        connectivityMonitor: ConnectivityMonitor,
+        retryPolicy: RetryPolicy,
+        abortedOperationPublisher: PassthroughSubject<(operation: WriteOperation, error: Error), Never>
+    ) {
         self.dbManager = dbManager
         self.executor = executor
         self.connectivityMonitor = connectivityMonitor
+        self.retryPolicy = retryPolicy
+        self.abortedOperationPublisher = abortedOperationPublisher
         
         subscribeToConnectivityChanges()
     }
@@ -77,9 +89,17 @@ internal class WriteQueue {
                     try await executor.execute(operation: operation)
                     try delete(operation: operation)
                 } catch {
-                    print("Failed to execute operation \(operation.id): \(error). Retrying later.")
-                    operation.retryCount += 1
-                    try update(operation: operation)
+                    // Check if the operation should be aborted
+                    if shouldAbort(operation: operation, error: error) {
+                        abortedOperationPublisher.send((operation, error))
+                        try delete(operation: operation) // Remove from queue
+                        print("Operation \(operation.id) aborted after reaching max retries or encountering an unrecoverable error.")
+                    } else {
+                        // Otherwise, increment retry count and update
+                        print("Failed to execute operation \(operation.id): \(error). Retrying later.")
+                        operation.retryCount += 1
+                        try update(operation: operation)
+                    }
                 }
             }
         } catch {
@@ -87,6 +107,27 @@ internal class WriteQueue {
         }
         
         isProcessing = false
+    }
+    
+    /// Determines if an operation should be aborted based on the retry policy.
+    /// - Parameters:
+    ///   - operation: The operation that failed.
+    ///   - error: The error that was thrown.
+    /// - Returns: `true` if the operation should be aborted, `false` otherwise.
+    private func shouldAbort(operation: WriteOperation, error: Error) -> Bool {
+        // 1. Check for max retries
+        if operation.retryCount >= retryPolicy.maxRetries {
+            return true
+        }
+        
+        // 2. Check for unrecoverable HTTP status codes
+        if let opError = error as? OperationError, let statusCode = opError.httpStatusCode {
+            if retryPolicy.unrecoverableHTTPSatusCodes.contains(statusCode) {
+                return true
+            }
+        }
+        
+        return false
     }
     
     /// Fetches all pending operations from the database.
