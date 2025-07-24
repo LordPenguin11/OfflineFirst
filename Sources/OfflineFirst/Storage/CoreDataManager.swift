@@ -5,7 +5,7 @@ import CoreData
 /// providing a simplified interface for saving and fetching data.
 internal class CoreDataManager {
     
-    private let provider: CoreDataProvider
+    internal let provider: CoreDataProvider
     
     /// Initializes the manager with a `CoreDataProvider`.
     /// - Parameter provider: The application-specific provider for the Core Data stack.
